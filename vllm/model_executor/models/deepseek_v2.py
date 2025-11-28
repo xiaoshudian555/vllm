@@ -1077,7 +1077,7 @@ class DeepseekV2Model(nn.Module):
                     current_hidden, current_residual = layer(current_positions, current_hidden, current_residual)
 
                     ubatch_hidden_states[ubatch_idx].copy_(current_hidden)
-                    ubatch_residual[ubatch_idx].copy_(current_residual)
+                    ubatch_residual[ubatch_idx] = current_residual
                 continue
 
             afd_connector = afd_metadata.afd_connector
@@ -1145,6 +1145,7 @@ class DeepseekV2Model(nn.Module):
                 )
 
                 if self.connector_name == "m2nconnector":
+                    logger.info(f"ttg deepseekv2 layer_idx:{layer.layer_idx} start send_attn_output")
                     handle = afd_connector.send_attn_output(current_hidden, topk_weights, topk_ids, metadata)
                     metadata.m2n_afdconnector_data.handle = handle
                     recv_hidden_states = afd_connector.recv_ffn_output(ubatch_hidden_states[ubatch_idx], metadata)
@@ -1162,12 +1163,15 @@ class DeepseekV2Model(nn.Module):
                     recv_hidden_states, _ = afd_connector.recv_ffn_output()
                 ubatch_hidden_states[ubatch_idx].copy_(recv_hidden_states)
                 ubatch_residual[ubatch_idx] = current_residual
+            logger.info(f"ttg deepseekv2 layer_idx:{layer.layer_idx} finish")
 
+        logger.info(f"ttg deepseekv2 start cat hidden_states results")
         hidden_states = torch.cat([
             ubatch_hidden_states[i][:afd_metadata.afd_tokens_lens[i]]
             for i in range(num_ubatches)
         ], dim=0)
 
+        logger.info(f"ttg deepseekv2 start cat residual results")
         if ubatch_residual[0] is not None:
             residual = torch.cat([
                 ubatch_residual[i][:afd_metadata.afd_tokens_lens[i]]
@@ -1177,6 +1181,8 @@ class DeepseekV2Model(nn.Module):
             ], dim=0)
         else:
             residual = None
+
+        logger.info(f"ttg deepseekv2 finish forward")
 
         return hidden_states, residual
 
@@ -1224,6 +1230,8 @@ class DeepseekV2Model(nn.Module):
             if afd_metadata is not None:
                 hidden_states, residual = self.forward_m2n_ubatch(ubatch_hidden_states, ubatch_residual,
                                                                   ubatch_positions, afd_metadata)
+                if self.enforce_eager:
+                    logger.info(f"ttg deepseekv2 get hidden_states and residual")
             else:
                 num_ubatches = len(ubatch_slices)
                 for layer in islice(self.layers, self.start_layer, self.end_layer):
@@ -1261,8 +1269,11 @@ class DeepseekV2Model(nn.Module):
                 "hidden_states": hidden_states,
                 "residual": residual
             })
-
+        if self.enforce_eager:
+            logger.info(f"ttg deepseekv2 start exec norm residual results")
         hidden_states, _ = self.norm(hidden_states, residual)
+        if self.enforce_eager:
+            logger.info(f"ttg deepseekv2 finish exec norm residual results")
         return hidden_states
 
     def compute_ffn_output(
