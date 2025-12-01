@@ -215,6 +215,7 @@ def coordinate_batch_across_dp(
 
     # Don't microbatch unless every other DP worker is also microbatching
     if not should_ubatch:
+        logger.info(f"ttg should_ubatch is {should_ubatch}, early return")
         return (None, num_tokens_after_padding)
 
     # This doesn't actually pad the ubatch slices. It just initializes the

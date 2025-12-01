@@ -202,12 +202,16 @@ class DPMetadata:
                                                           dtype=torch.int32)
 
         # AllReduce to gather from all ranks
+        logger.info(f"ttg start AllReduce to gather from all ranks")
         dist.all_reduce(stage_tokens_across_dp, group=group)
+        logger.info(f"ttg finish AllReduce to gather from all ranks")
         stage_tokens_across_dp_cpu = stage_tokens_across_dp.cpu()
+        logger.info(f"ttg num_stage_tokens_across_dp 1")
 
         # Compute max tokens per stage
         max_stage_tokens_across_dp_cpu = torch.max(stage_tokens_across_dp_cpu,
                                                    dim=1)[0]
+        logger.info(f"ttg num_stage_tokens_across_dp 2")
 
         return stage_tokens_across_dp_cpu, max_stage_tokens_across_dp_cpu
 
