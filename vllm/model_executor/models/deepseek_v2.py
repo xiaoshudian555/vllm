@@ -1158,7 +1158,8 @@ class DeepseekV2Model(nn.Module):
                 ubatch_metadata[ubatch_idx] = metadata
 
                 if self.connector_name == "m2nconnector":
-                    logger.info(f"ttg deepseekv2 layer_idx:{layer.layer_idx} start send_attn_output")
+                    if self.enforce_eager:
+                        logger.info(f"ttg deepseekv2 layer_idx:{layer.layer_idx} start send_attn_output")
                     handle = afd_connector.send_attn_output(current_hidden, topk_weights, topk_ids, metadata)
                     ubatch_metadata[ubatch_idx].m2n_afdconnector_data.handle = handle
                 elif self.connector_name == "camconnector":
@@ -1171,7 +1172,8 @@ class DeepseekV2Model(nn.Module):
                                                    row_idx=row_idx,
                                                    metadata=metadata)
                 ubatch_residual[ubatch_idx] = current_residual
-            logger.info(f"ttg deepseekv2 layer_idx:{layer.layer_idx} finish")
+            if self.enforce_eager:
+                logger.info(f"ttg deepseekv2 layer_idx:{layer.layer_idx} finish")
 
         for ubatch_idx in range(num_ubatches):
             if self.connector_name == "m2nconnector":
@@ -1184,13 +1186,15 @@ class DeepseekV2Model(nn.Module):
                 recv_hidden_states, _ = afd_connector.recv_ffn_output()
             ubatch_hidden_states[ubatch_idx].copy_(recv_hidden_states)
 
-        logger.info(f"ttg deepseekv2 start cat hidden_states results")
+        if self.enforce_eager:
+            logger.info(f"ttg deepseekv2 start cat hidden_states results")
         hidden_states = torch.cat([
             ubatch_hidden_states[i][:afd_metadata.afd_tokens_lens[i]]
             for i in range(num_ubatches)
         ], dim=0)
 
-        logger.info(f"ttg deepseekv2 start cat residual results")
+        if self.enforce_eager:
+            logger.info(f"ttg deepseekv2 start cat residual results")
         if ubatch_residual[0] is not None:
             residual = torch.cat([
                 ubatch_residual[i][:afd_metadata.afd_tokens_lens[i]]
@@ -1200,8 +1204,8 @@ class DeepseekV2Model(nn.Module):
             ], dim=0)
         else:
             residual = None
-
-        logger.info(f"ttg deepseekv2 finish forward")
+        if self.enforce_eager:
+            logger.info(f"ttg deepseekv2 finish forward")
 
         return hidden_states, residual
 
